@@ -1,38 +1,29 @@
 #!/usr/bin/ruby
 
 require 'dotenv'
-require 'twitter'
+require 'tweetstream'
 require 'faraday'
 require 'json'
 
 Dotenv.load
 
-$config = {
-  :consumer_key    => ENV['consumer_key'],
-  :consumer_secret => ENV['consumer_secret'],
-  :access_token        => ENV['access_token'],
-  :access_token_secret => ENV['access_token_secret'],
-}
-
-client = Twitter::REST::Client.new($config)
-
-# get the timeline of tweets at me
-### TODO only get un-processed tweets
-### TODO handle exceptions from twitter nicely
-### TODO don't make unnecessary requests (if you got fewer than options[:count] you don't really need to try again
-def collect_with_max_id(collection=[], max_id=nil, &block)
-  response = yield(max_id)
-  collection += response
-  response.empty? ? collection.flatten : collect_with_max_id(collection, response.last.id - 1, &block)
+TweetStream.configure do |config|
+  config.consumer_key    = ENV['consumer_key']
+  config.consumer_secret = ENV['consumer_secret']
+  config.oauth_token        = ENV['access_token']
+  config.oauth_token_secret = ENV['access_token_secret']
+  config.auth_method        = :oauth
 end
 
-def client.get_all_tweets_at_me()
-  collect_with_max_id() do |max_id|
-    options = {:count => 200}
-    options[:max_id] = max_id unless max_id.nil?
-    mentions_timeline(options)
-  end
+stream_client = TweetStream::Client.new
+
+rest_client = Twitter::REST::Client.new do |config|
+  config.consumer_key    = ENV['consumer_key']
+  config.consumer_secret = ENV['consumer_secret']
+  config.access_token        = ENV['access_token']
+  config.access_token_secret = ENV['access_token_secret']
 end
+
 
 def make_bike_desc(max_char, bike={})
   color = bike["frame_colors"][0].downcase!
@@ -65,12 +56,9 @@ def make_bike_desc(max_char, bike={})
   end
 end
 
-# go get the tweets
-at_me = client.get_all_tweets_at_me()
 
 
-
-at_me.each do |tweet|
+stream_client.userstream do |tweet|
 
   # remove user mentions from the incoming tweet
   search_term = tweet.full_text
@@ -114,7 +102,7 @@ at_me.each do |tweet|
     end
 
     # send the tweet
-    client.update(reply, update_opts)
+    rest_client.update(reply, update_opts)
     puts reply
   end
 end
