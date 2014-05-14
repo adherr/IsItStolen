@@ -34,7 +34,7 @@ TWEET_LENGTH = 140
 
 # whoami? (remember this so we can not respond to our own messages in the stream)
 i_am_user = rest_client.verify_credentials
-
+puts "I am #{i_am_user.screen_name}" if $DEBUG
 
 # @param at_screen_name [String] screen_name to reply to with @ already prepended (ready to send)
 # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
@@ -76,11 +76,23 @@ def build_bike_reply(at_screen_name, bike={})
   return "#{at_screen_name} #{bike_slug} #{stolen_slug} #{bike["url"]}"
 end
 
-
+# a little status for the logs
+stream_client.on_inited do
+  puts 'Connected...'
+end
+stream_client.on_error do |message|
+  puts message
+end
+stream_client.on_reconnect do |timeout, retries|
+  puts "Reconnect: timeout #{timeout}, retries: #{retries}"
+end
 
 stream_client.userstream do |tweet|
+  puts "got tweet" if $DEBUG
+
   # don't respond to my outgoing tweets
   if tweet.user == i_am_user
+    puts "my tweet... next!" if $DEBUG
     next
   end
 
@@ -98,6 +110,7 @@ stream_client.userstream do |tweet|
   # remove whitespace from the ends for matching with returned serial later on
   search_term.strip!
 
+  puts "searching for #{search_term}" if $DEBUG
 
   # stuff to use in the twitter status reply
   update_opts = { :in_reply_to_status => tweet}
@@ -106,8 +119,9 @@ stream_client.userstream do |tweet|
 
   # Don't bother to search if the serial number is "absent"
   if search_term.downcase == "absent"
-    reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://bikeindex.org/bikes?serial=ABSENT"
-    rest_client.update(reply, update_opts)
+    reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://BikeIndex.org/bikes?serial=ABSENT"
+    result = rest_client.update(reply, update_opts)
+    puts "Sent \"#{result.full_text}\"" if $DEBUG
     next
   end
 
@@ -116,27 +130,35 @@ stream_client.userstream do |tweet|
   # make bikes an array of bike hashes from the bike index
   bikes = JSON.parse(bike_index_response.body)["bikes"]
 
+  puts "got #{bikes.length} bikes" if $DEBUG
+
   # There are several cases of outcomes here
   # 1. no bikes found
   if bikes.empty?
     reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
-    rest_client.update(reply, update_opts)
+    result = rest_client.update(reply, update_opts)
+    puts "Sent \"#{result.full_text}\"" if $DEBUG
 
   # 2. a few bikes found
   elsif bikes.length >= 1 && bikes.length <= 3
     if bikes.length > 1
       reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
-     rest_client.update(reply, update_opts)
+      result = rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" if $DEBUG
     end
     
     bikes.each do |bike|
       
       reply = build_bike_reply(at_screen_name, bike)
-      rest_client.update(reply, update_opts)
-#      puts reply
+      result = rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" if $DEBUG
+
     end
   # 3. There are more than 3 bikes, just send to the search results
   else 
     reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
+    result = rest_client.update(reply, update_opts)
+    puts "Sent \"#{result.full_text}\"" if $DEBUG
+    
   end
 end
