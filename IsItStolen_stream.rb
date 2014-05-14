@@ -10,6 +10,7 @@ require 'json'
 
 Dotenv.load
 
+# set up the clients
 TweetStream.configure do |config|
   config.consumer_key    = ENV['consumer_key']
   config.consumer_secret = ENV['consumer_secret']
@@ -27,12 +28,23 @@ rest_client = Twitter::REST::Client.new do |config|
   config.access_token_secret = ENV['access_token_secret']
 end
 
+# grab the current t.co wrapper length for https links
+HTTPS_LENGTH = rest_client.configuration.short_url_length_https
+TWEET_LENGTH = 140
 
-def make_bike_desc(max_char, bike={})
+
+# @param at_screen_name [String] screen_name to reply to with @ already prepended (ready to send)
+# @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
+def build_bike_reply(at_screen_name, bike={})
+  max_char = TWEET_LENGTH - HTTPS_LENGTH - at_screen_name.length - 3 # spaces between slugs
+  stolen_slug = bike["stolen"] ? "NOT stolen" : "STOLEN"
+
+  max_char -= stolen_slug.length
+
   color = bike["frame_colors"][0]
-  if color.start_with?("silver")
+  if color.start_with?("Silver")
     color.replace "gray"
-  elsif color.start_with?("stickers")
+  elsif color.start_with?("Stickers")
     color.replace ''
   end
 
@@ -41,22 +53,24 @@ def make_bike_desc(max_char, bike={})
 
   full_length = color.length+model.length+manufacturer.length+2
   if full_length <= max_char
-    return "#{color} #{manufacturer} #{model}"
+    bike_slug = "#{color} #{manufacturer} #{model}"
   elsif full_length - color.length - 1 <= max_char
-    return "#{manufacturer} #{model}"
+    bike_slug = "#{manufacturer} #{model}"
   elsif full_length - manufacturer.length - 1 <= max_char
-    return "#{color} #{model}"
+    bike_slug = "#{color} #{model}"
   elsif full_length - model.length - 1 <= max_char
-    return "#{color} #{manufacturer}"
+    bike_slug = "#{color} #{manufacturer}"
   elsif model.length + 2 <= max_char
-    return "a #{model}"
+    bike_slug = "a #{model}"
   elsif manufacturer.length + 2 <= max_char
-    return "a #{manufacturer}"
+    bike_slug = "a #{manufacturer}"
   elsif color.length + 5 <= max_char
-    return "#{color} bike"
+    bike_slug = "#{color} bike"
   else
-    return ""
+    bike_slug = ""
   end
+
+  return "#{at_screen_name} #{bike_slug} #{stolen_slug} #{bike["url"]}"
 end
 
 
@@ -77,35 +91,44 @@ stream_client.userstream do |tweet|
   # remove whitespace from the ends for matching with returned serial later on
   search_term.strip!
 
-  # go search the bike index
-  bike_index_response = Faraday.get 'https://bikeindex.org/api/v1/bikes', { :serial => search_term }
-  # bikes is an array of bike hashes from the bike index
-  bikes = JSON.parse(bike_index_response.body)["bikes"]
 
   # stuff to use in the twitter status reply
   update_opts = { :in_reply_to_status => tweet}
-  at_user_strin = "@#{tweet.user.screen_name}" #This is 16 characters max ('@' + 15 for screen name)
+  at_screen_name = "@#{tweet.user.screen_name}" #This is 16 characters max ('@' + 15 for screen name)
+
+
+  # Don't bother to search if the serial number is "absent"
+  if search_term.downcase == "absent"
+    reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://bikeindex.org/bikes?serial=ABSENT"
+    rest_client.update(reply, update_opts)
+    next
+  end
+
+  # go search the bike index
+  bike_index_response = Faraday.get 'https://bikeindex.org/api/v1/bikes', { :serial => search_term }
+  # make bikes an array of bike hashes from the bike index
+  bikes = JSON.parse(bike_index_response.body)["bikes"]
 
   # There are several cases of outcomes here
   # 1. no bikes found
   if bikes.empty?
-    reply = "Sorry #{at_user_strin}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
-    
-    # 2. only one bike found
-  elsif bikes.length == 1
-
-    # 2a. The bike we found is an exact match of the search term
-    if bikes[0]["serial"] == search_term
-      #2a1. stolen
-      if bikes[0]["stolen"]
-        reply = "#{at_user_strin} " + make_bike_desc(92, bikes[0]) + " listed as STOLEN #{bikes[0]["url"]}"
-      else
-        reply = "#{at_user_strin} " + make_bike_desc(88, bikes[0]) + " listed as NOT stolen #{bikes[0]["url"]}"
-      end
-    end
-
-    # send the tweet
+    reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
     rest_client.update(reply, update_opts)
-    puts reply
+
+  # 2. a few bikes found
+  elsif bikes.length >= 1 && bikes.length <= 3
+    if bikes.length > 1
+      reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number https://bikeindex.org/bikes?serial=#{search_term}"
+      rest_client.update(reply, update_opts)
+    end
+    
+    bikes.each do |bike|
+      
+      reply = build_bike_reply(at_screen_name, bike)
+      rest_client.update(reply, update_opts)
+#      puts reply
+    end
+  else # there are more than 3 bikes, just send to the search results
+    reply = "Whoa, #{at_screen_name} there are a lot of bikes with that serial! Check here: https://bikeindex.org/bikes?serial=#{search_term}"
   end
 end
