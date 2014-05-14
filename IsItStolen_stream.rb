@@ -37,13 +37,13 @@ TWEET_LENGTH = 140
 # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
 def build_bike_reply(at_screen_name, bike={})
   max_char = TWEET_LENGTH - HTTPS_LENGTH - at_screen_name.length - 3 # spaces between slugs
-  stolen_slug = bike["stolen"] ? "NOT stolen" : "STOLEN"
+  stolen_slug = bike["stolen"] ? "STOLEN" : "NOT stolen"
 
   max_char -= stolen_slug.length
 
   color = bike["frame_colors"][0]
   if color.start_with?("Silver")
-    color.replace "gray"
+    color.replace "Gray"
   elsif color.start_with?("Stickers")
     color.replace ''
   end
@@ -118,8 +118,8 @@ stream_client.userstream do |tweet|
   # 2. a few bikes found
   elsif bikes.length >= 1 && bikes.length <= 3
     if bikes.length > 1
-      reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number https://bikeindex.org/bikes?serial=#{search_term}"
-      rest_client.update(reply, update_opts)
+      reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
+     rest_client.update(reply, update_opts)
     end
     
     bikes.each do |bike|
@@ -128,7 +128,8 @@ stream_client.userstream do |tweet|
       rest_client.update(reply, update_opts)
 #      puts reply
     end
-  else # there are more than 3 bikes, just send to the search results
-    reply = "Whoa, #{at_screen_name} there are a lot of bikes with that serial! Check here: https://bikeindex.org/bikes?serial=#{search_term}"
+  # 3. There are more than 3 bikes, just send to the search results
+  else 
+    reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
   end
 end
