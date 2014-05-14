@@ -1,5 +1,8 @@
 #!/usr/bin/ruby
 
+require 'rubygems'
+require 'bundler/setup' 
+
 require 'dotenv'
 require 'tweetstream'
 require 'faraday'
@@ -26,7 +29,7 @@ end
 
 
 def make_bike_desc(max_char, bike={})
-  color = bike["frame_colors"][0].downcase!
+  color = bike["frame_colors"][0]
   if color.start_with?("silver")
     color.replace "gray"
   elsif color.start_with?("stickers")
@@ -95,9 +98,9 @@ stream_client.userstream do |tweet|
     if bikes[0]["serial"] == search_term
       #2a1. stolen
       if bikes[0]["stolen"]
-        reply = "#{at_user_strin} Found " + make_bike_desc(86, bikes[0]) + " listed as STOLEN #{bikes[0]["url"]}"
+        reply = "#{at_user_strin} " + make_bike_desc(92, bikes[0]) + " listed as STOLEN #{bikes[0]["url"]}"
       else
-        #reply = "#{at_user_strin} Found " + make_bike_desc(82, bikes[0]) + " listed as NOT stolen #{bikes[0]["url"]}"
+        reply = "#{at_user_strin} " + make_bike_desc(88, bikes[0]) + " listed as NOT stolen #{bikes[0]["url"]}"
       end
     end
 
