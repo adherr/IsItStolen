@@ -32,6 +32,9 @@ end
 HTTPS_LENGTH = rest_client.configuration.short_url_length_https
 TWEET_LENGTH = 140
 
+# whoami? (remember this so we can not respond to our own messages in the stream)
+i_am_user = rest_client.verify_credentials
+
 
 # @param at_screen_name [String] screen_name to reply to with @ already prepended (ready to send)
 # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
@@ -76,6 +79,10 @@ end
 
 
 stream_client.userstream do |tweet|
+  # don't respond to my outgoing tweets
+  if tweet.user == i_am_user
+    next
+  end
 
   # remove user mentions from the incoming tweet
   search_term = tweet.full_text
