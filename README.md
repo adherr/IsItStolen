@@ -14,11 +14,11 @@ stolen status using the [Twitter REST API][3].
 TO DO
 =====
 
--All caps the environment variables
--Search nearby serials if no hits are found with the exact match
--Better parsing of incoming tweets
--Handle Twitter exceptions reasonably
--Persistently keep track of last tweet processed so we can respond to
- old tweets on startup back to where we left of in case of streaming
- API problems, Heroku dyno balancing, etc
--Send pictures? Only stolen bikes? ???
+- All caps the environment variables
+- Search nearby serials if no hits are found with the exact match
+- Better parsing of incoming tweets
+- Handle Twitter exceptions reasonably
+- Persistently keep track of last tweet processed so we can respond to
+  old tweets on startup back to where we left of in case of streaming
+  API problems, Heroku dyno balancing, etc
+- Send pictures? Only stolen bikes? ???
