@@ -19,6 +19,6 @@ TO DO
 - Better parsing of incoming tweets
 - Handle Twitter exceptions reasonably
 - Persistently keep track of last tweet processed so we can respond to
-  old tweets on startup back to where we left of in case of streaming
+  old tweets on startup back to where we left off in case of streaming
   API problems, Heroku dyno balancing, etc
 - Send pictures? Only stolen bikes? ???
