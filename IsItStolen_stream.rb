@@ -12,20 +12,20 @@ Dotenv.load
 
 # set up the clients
 TweetStream.configure do |config|
-  config.consumer_key    = ENV['consumer_key']
-  config.consumer_secret = ENV['consumer_secret']
-  config.oauth_token        = ENV['access_token']
-  config.oauth_token_secret = ENV['access_token_secret']
+  config.consumer_key    = ENV['CONSUMER_KEY']
+  config.consumer_secret = ENV['CONSUMER_SECRET']
+  config.oauth_token        = ENV['ACCESS_TOKEN']
+  config.oauth_token_secret = ENV['ACCESS_TOKEN_SECRET']
   config.auth_method        = :oauth
 end
 
 stream_client = TweetStream::Client.new
 
 rest_client = Twitter::REST::Client.new do |config|
-  config.consumer_key    = ENV['consumer_key']
-  config.consumer_secret = ENV['consumer_secret']
-  config.access_token        = ENV['access_token']
-  config.access_token_secret = ENV['access_token_secret']
+  config.consumer_key    = ENV['CONSUMER_KEY']
+  config.consumer_secret = ENV['CONSUMER_SECRET']
+  config.access_token        = ENV['ACCESS_TOKEN']
+  config.access_token_secret = ENV['ACCESS_TOKEN_SECRET']
 end
 
 # grab the current t.co wrapper length for https links
@@ -87,6 +87,7 @@ stream_client.on_reconnect do |timeout, retries|
   puts "Reconnect: timeout #{timeout}, retries: #{retries}"
 end
 
+## This is where we do the thing:
 stream_client.userstream do |tweet|
   puts "got tweet" if $DEBUG
 
@@ -135,9 +136,29 @@ stream_client.userstream do |tweet|
   # There are several cases of outcomes here
   # 1. no bikes found
   if bikes.empty?
-    reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
-    result = rest_client.update(reply, update_opts)
-    puts "Sent \"#{result.full_text}\"" if $DEBUG
+
+    # search for close serials
+    bike_index_response_close = Faraday.get 'https://bikeindex.org/api/v1/bikes/close_serials', { :serial => search_term }
+    # make bikes an array of bike hashes from the bike index
+    close_bikes = JSON.parse(bike_index_response_close.body)["bikes"]
+
+    # If there's only one match, tweet it, else send to search results
+    if close_bikes.length == 0
+      reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
+      result = rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" if $DEBUG
+
+    elsif close_bikes.length == 1
+      reply = bulid_bike_reply("#{at_screen_name} Inexact match: serial=#{bikes[0]["serial"]}", bikes[0])
+      result = rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" if $DEBUG
+
+    else
+      reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
+      result = rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" if $DEBUG
+    end
+    
 
   # 2. a few bikes found
   elsif bikes.length >= 1 && bikes.length <= 3

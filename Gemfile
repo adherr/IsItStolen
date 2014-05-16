@@ -6,3 +6,6 @@ gem 'dotenv'
 gem 'tweetstream'
 gem 'faraday'
 gem 'json'
+
+# need latest eventmachine on windows
+gem 'eventmachine', :git => 'https://github.com/eventmachine/eventmachine.git'
