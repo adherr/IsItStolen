@@ -4,6 +4,7 @@ source "https://rubygems.org"
 
 gem 'dotenv'
 gem 'tweetstream'
+gem 'twitter'
 gem 'faraday'
 gem 'json'
 

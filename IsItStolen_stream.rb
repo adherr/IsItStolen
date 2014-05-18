@@ -5,6 +5,7 @@ require 'bundler/setup'
 
 require 'dotenv'
 require 'tweetstream'
+require 'twitter'
 require 'faraday'
 require 'json'
 
