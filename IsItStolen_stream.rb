@@ -90,7 +90,7 @@ end
 
 ## This is where we do the thing:
 stream_client.userstream do |tweet|
-  puts "got tweet \"${tweet.full_text}\"" if $DEBUG
+  puts "got tweet \"#{tweet.full_text}\"" if $DEBUG
 
   # don't respond to my outgoing tweets
   if tweet.user == i_am_user
@@ -140,8 +140,10 @@ stream_client.userstream do |tweet|
 
     # search for close serials
     bike_index_response_close = Faraday.get 'https://bikeindex.org/api/v1/bikes/close_serials', { :serial => search_term }
-    # make bikes an array of bike hashes from the bike index
+    # make close_bikes an array of bike hashes from the bike index
     close_bikes = JSON.parse(bike_index_response_close.body)["bikes"]
+
+    puts "Searching close serials: got #{close_bikes.length}" if $DEBUG
 
     # If there's only one match, tweet it, else send to search results
     if close_bikes.empty?
@@ -150,7 +152,7 @@ stream_client.userstream do |tweet|
       puts "Sent \"#{result.full_text}\"" if $DEBUG
 
     elsif close_bikes.length == 1
-      reply = bulid_bike_reply('#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}', close_bikes[0])
+      reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
       result = rest_client.update(reply, update_opts)
       puts "Sent \"#{result.full_text}\"" if $DEBUG
 

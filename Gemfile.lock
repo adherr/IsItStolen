@@ -69,3 +69,4 @@ DEPENDENCIES
   faraday
   json
   tweetstream
+  twitter
