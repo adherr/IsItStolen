@@ -90,7 +90,7 @@ end
 
 ## This is where we do the thing:
 stream_client.userstream do |tweet|
-  puts "got tweet" if $DEBUG
+  puts "got tweet \"${tweet.full_text}\"" if $DEBUG
 
   # don't respond to my outgoing tweets
   if tweet.user == i_am_user
@@ -144,13 +144,13 @@ stream_client.userstream do |tweet|
     close_bikes = JSON.parse(bike_index_response_close.body)["bikes"]
 
     # If there's only one match, tweet it, else send to search results
-    if close_bikes.length == 0
+    if close_bikes.empty?
       reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
       result = rest_client.update(reply, update_opts)
       puts "Sent \"#{result.full_text}\"" if $DEBUG
 
     elsif close_bikes.length == 1
-      reply = bulid_bike_reply("#{at_screen_name} Inexact match: serial=#{bikes[0]["serial"]}", bikes[0])
+      reply = bulid_bike_reply('#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}', close_bikes[0])
       result = rest_client.update(reply, update_opts)
       puts "Sent \"#{result.full_text}\"" if $DEBUG
 
