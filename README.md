@@ -1,6 +1,8 @@
 What it is
 ==========
 
+## [@IsItStolen](https://twitter.com/isitstolen)
+
 A script that connects to a [Twitter Userstream][1] and responds to
 all tweets that mention the user it's connected as. This script
 queries [BikeIndex.org][2] about the contents of the messages it

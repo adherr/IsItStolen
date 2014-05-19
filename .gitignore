@@ -1,2 +1,8 @@
-config.rb
+# Secrets
 .env
+
+# OSX spam
+.DS_Store
+
+# rvm ruby versioning
+.ruby-version
