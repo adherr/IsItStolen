@@ -11,6 +11,9 @@ require 'json'
 
 class IsItStolen
 
+
+  # Set up the streaming and REST API clients we'll use
+  # BEWARE!: These methods could fail (and I should probably put them in a setup function after object creation)
   def initialize
     Dotenv.load
 
@@ -55,7 +58,10 @@ class IsItStolen
     puts "I am #{@i_am_user.screen_name}" # if $DEBUG
 
   end
-
+  
+  # Perform the conditional text processing to create a reply string
+  # that fits twitter's limits
+  #
   # @param at_screen_name [String] screen_name to reply to with @ already prepended (ready to send)
   # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
   def build_bike_reply(at_screen_name, bike={})
@@ -96,111 +102,144 @@ class IsItStolen
     return "#{at_screen_name} #{bike_slug} #{stolen_slug} #{bike["url"]}"
   end
 
-  
+  # sends a tweet with media and echos it, with error handling
+  #
+  # @param message [String] the text to send
+  # @param media_location [String] URI of photo to send
+  # @param options [Hash] same options as 
+  def send_tweet(message, media_location, options={})
+    reply = nil
+
+    if media_location
+      File.open('temp.jpg', 'wb') do |foto|
+        foto.write open(media_location).read
+      end
+      File.open('temp.jpg', 'r') do |foto|
+        result = rest_client.update_with_media(message, foto, options)
+      end
+    else
+      result = rest_client.update(message, options)
+    end
+
+    puts "Sent \"#{result.full_text}\""
+
+    rescue Twitter::Error => e
+      puts "recieved #{e.message}, no reply sent"
+  end
+
+  # Monitors userstream (streaming API) and catches tweets
+  # Most of the time we are sitting in the block in this function waiting for tweets
   def respond_to_stream
 
-    ## This is where we do the thing:
     @stream_client.userstream do |tweet|
-      reply = nil
+      process_tweet(tweet)
+    end
 
-      puts "got tweet \"#{tweet.full_text}\"" # if $DEBUG
+  end
 
-      # don't respond to my outgoing tweets
-      if tweet.user == @i_am_user
-        puts "my tweet... next!" # if $DEBUG
-        next
+  # Takes a tweet, picks it apart, queries BikeIndex, and replies to tweet
+  #
+  # @param tweet [Twitter::Tweet] an incoming tweet to process
+  def process_tweet(tweet)
+
+    puts "got tweet \"#{tweet.full_text}\"" # if $DEBUG
+
+    # don't respond to my outgoing tweets
+    if tweet.user == @i_am_user
+      puts "my tweet... next!" # if $DEBUG
+      return
+    end
+
+    
+    search_term = tweet.full_text
+
+    # remove user mentions from the incoming tweet
+    tweet.user_mentions.each do |user_mention|
+      search_term = (user_mention.indices[0] > 0 ? search_term.slice(0..(user_mention.indices[0]-1)) : "") + search_term.slice(user_mention.indices[1]..-1)
+    end
+    # and what the hell, get hashtags too
+    tweet.hashtags.each do |hashtag|
+      search_term = (hashtag.indices[0] > 0 ? search_term.slice(0..(hashtag.indices[0]-1)) : "") + search_term.slice(hashtag.indices[1]..-1)
+    end
+    # remove whitespace from the ends for matching with returned serial later on
+    search_term.strip!
+
+    puts "searching for \"#{search_term}\"" # if $DEBUG
+
+    # stuff to use in the twitter status reply
+    update_opts = { :in_reply_to_status => tweet}
+    at_screen_name = "@#{tweet.user.screen_name}" #This is 16 characters max ('@' + 15 for screen name)
+
+
+    # Don't bother to search if the serial number is "absent"
+    if search_term.downcase == "absent"
+      reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://BikeIndex.org/bikes?serial=ABSENT"
+      result = @rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" # if $DEBUG
+      return
+    end
+
+    # go search the bike index
+    bike_index_response = Faraday.get 'https://bikeindex.org/api/v1/bikes', { :serial => search_term }
+    # make bikes an array of bike hashes from the bike index
+    bikes = JSON.parse(bike_index_response.body)["bikes"]
+
+    puts "got #{bikes.length} bikes" # if $DEBUG
+
+    # There are several cases of outcomes here
+    # 1. no bikes found
+    if bikes.empty?
+
+      # search for close serials
+      bike_index_response_close = Faraday.get 'https://bikeindex.org/api/v1/bikes/close_serials', { :serial => search_term }
+      # make close_bikes an array of bike hashes from the bike index
+      close_bikes = JSON.parse(bike_index_response_close.body)["bikes"]
+
+      puts "Searching close serials: got #{close_bikes.length}" # if $DEBUG
+
+      # If there's only one match, tweet it, else send to search results
+      if close_bikes.empty?
+        reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
+        result = @rest_client.update(reply, update_opts)
+        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+
+      elsif close_bikes.length == 1
+        reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
+        result = @rest_client.update(reply, update_opts)
+        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+
+      else
+        reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
+        result = @rest_client.update(reply, update_opts)
+        puts "Sent \"#{result.full_text}\"" # if $DEBUG
       end
-
       
-      search_term = tweet.full_text
 
-      # remove user mentions from the incoming tweet
-      tweet.user_mentions.each do |user_mention|
-        search_term = (user_mention.indices[0] > 0 ? search_term.slice(0..(user_mention.indices[0]-1)) : "") + search_term.slice(user_mention.indices[1]..-1)
-      end
-      # and what the hell, get hashtags too
-      tweet.hashtags.each do |hashtag|
-        search_term = (hashtag.indices[0] > 0 ? search_term.slice(0..(hashtag.indices[0]-1)) : "") + search_term.slice(hashtag.indices[1]..-1)
-      end
-      # remove whitespace from the ends for matching with returned serial later on
-      search_term.strip!
-
-      puts "searching for \"#{search_term}\"" # if $DEBUG
-
-      # stuff to use in the twitter status reply
-      update_opts = { :in_reply_to_status => tweet}
-      at_screen_name = "@#{tweet.user.screen_name}" #This is 16 characters max ('@' + 15 for screen name)
-
-
-      # Don't bother to search if the serial number is "absent"
-      if search_term.downcase == "absent"
-        reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://BikeIndex.org/bikes?serial=ABSENT"
+      # 2. a few bikes found
+    elsif bikes.length >= 1 && bikes.length <= 3
+      if bikes.length > 1
+        reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
         result = @rest_client.update(reply, update_opts)
         puts "Sent \"#{result.full_text}\"" # if $DEBUG
-        next
       end
-
-      # go search the bike index
-      bike_index_response = Faraday.get 'https://bikeindex.org/api/v1/bikes', { :serial => search_term }
-      # make bikes an array of bike hashes from the bike index
-      bikes = JSON.parse(bike_index_response.body)["bikes"]
-
-      puts "got #{bikes.length} bikes" # if $DEBUG
-
-      # There are several cases of outcomes here
-      # 1. no bikes found
-      if bikes.empty?
-
-        # search for close serials
-        bike_index_response_close = Faraday.get 'https://bikeindex.org/api/v1/bikes/close_serials', { :serial => search_term }
-        # make close_bikes an array of bike hashes from the bike index
-        close_bikes = JSON.parse(bike_index_response_close.body)["bikes"]
-
-        puts "Searching close serials: got #{close_bikes.length}" # if $DEBUG
-
-        # If there's only one match, tweet it, else send to search results
-        if close_bikes.empty?
-          reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
-          result = @rest_client.update(reply, update_opts)
-          puts "Sent \"#{result.full_text}\"" # if $DEBUG
-
-        elsif close_bikes.length == 1
-          reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
-          result = @rest_client.update(reply, update_opts)
-          puts "Sent \"#{result.full_text}\"" # if $DEBUG
-
-        else
-          reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
-          result = @rest_client.update(reply, update_opts)
-          puts "Sent \"#{result.full_text}\"" # if $DEBUG
-        end
+      
+      bikes.each do |bike|
         
-
-        # 2. a few bikes found
-      elsif bikes.length >= 1 && bikes.length <= 3
-        if bikes.length > 1
-          reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
-          result = @rest_client.update(reply, update_opts)
-          puts "Sent \"#{result.full_text}\"" # if $DEBUG
-        end
-        
-        bikes.each do |bike|
-          
-          reply = build_bike_reply(at_screen_name, bike)
-          result = @rest_client.update(reply, update_opts)
-          puts "Sent \"#{result.full_text}\"" # if $DEBUG
-
-        end
-        # 3. There are more than 3 bikes, just send to the search results
-      else 
-        reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
+        reply = build_bike_reply(at_screen_name, bike)
         result = @rest_client.update(reply, update_opts)
         puts "Sent \"#{result.full_text}\"" # if $DEBUG
-        
+
       end
+      # 3. There are more than 3 bikes, just send to the search results
+    else 
+      reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
+      result = @rest_client.update(reply, update_opts)
+      puts "Sent \"#{result.full_text}\"" # if $DEBUG
+      
     end
   end
 end
+
 
 bot = IsItStolen.new
 bot.respond_to_stream
