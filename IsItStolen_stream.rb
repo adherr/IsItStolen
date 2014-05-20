@@ -8,6 +8,7 @@ require 'tweetstream'
 require 'twitter'
 require 'faraday'
 require 'json'
+require 'open-uri'
 
 class IsItStolen
 
@@ -64,11 +65,12 @@ class IsItStolen
   #
   # @param at_screen_name [String] screen_name to reply to with @ already prepended (ready to send)
   # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
-  def build_bike_reply(at_screen_name, bike={})
+  def build_bike_reply(at_screen_name, bike)
     max_char = @tweet_length - @https_length - at_screen_name.length - 3 # spaces between slugs
     stolen_slug = bike["stolen"] ? "STOLEN" : "NOT stolen"
 
     max_char -= stolen_slug.length
+    max_char -= bike["photo"] ? @media_length : 0
 
     color = bike["frame_colors"][0]
     if color.start_with?("Silver")
@@ -108,23 +110,27 @@ class IsItStolen
   # @param media_location [String] URI of photo to send
   # @param options [Hash] same options as 
   def send_tweet(message, media_location, options={})
-    reply = nil
+    result = nil
 
     if media_location
       File.open('temp.jpg', 'wb') do |foto|
         foto.write open(media_location).read
       end
       File.open('temp.jpg', 'r') do |foto|
-        result = rest_client.update_with_media(message, foto, options)
+        result = @rest_client.update_with_media(message, foto, options)
       end
     else
-      result = rest_client.update(message, options)
+      result = @rest_client.update(message, options)
     end
 
     puts "Sent \"#{result.full_text}\""
 
     rescue Twitter::Error => e
       puts "recieved #{e.message}, no reply sent"
+    # here we assume that non-Twitter errors are file errors
+# we can't really be sure of this, and we don't want to end up sending doubles, so no
+#    rescue
+#      send_tweet(message, nil, options)
   end
 
   # Monitors userstream (streaming API) and catches tweets
@@ -174,8 +180,9 @@ class IsItStolen
     # Don't bother to search if the serial number is "absent"
     if search_term.downcase == "absent"
       reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://BikeIndex.org/bikes?serial=ABSENT"
-      result = @rest_client.update(reply, update_opts)
-      puts "Sent \"#{result.full_text}\"" # if $DEBUG
+      #result = @rest_client.update(reply, update_opts)
+      #puts "Sent \"#{result.full_text}\"" # if $DEBUG
+      send_tweet(reply, nil, update_opts)
       return
     end
 
@@ -200,18 +207,21 @@ class IsItStolen
       # If there's only one match, tweet it, else send to search results
       if close_bikes.empty?
         reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
-        result = @rest_client.update(reply, update_opts)
-        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        #result = @rest_client.update(reply, update_opts)
+        #puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        send_tweet(reply, nil, update_opts)
 
       elsif close_bikes.length == 1
         reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
-        result = @rest_client.update(reply, update_opts)
-        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+#        result = @rest_client.update(reply, update_opts)
+#        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        send_tweet(reply, close_bikes[0]["photo"], update_opts)
 
       else
         reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
-        result = @rest_client.update(reply, update_opts)
-        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        # result = @rest_client.update(reply, update_opts)
+        # puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        send_tweet(reply, nil, update_opts)
       end
       
 
@@ -219,22 +229,24 @@ class IsItStolen
     elsif bikes.length >= 1 && bikes.length <= 3
       if bikes.length > 1
         reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
-        result = @rest_client.update(reply, update_opts)
-        puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        # result = @rest_client.update(reply, update_opts)
+        # puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        send_tweet(reply, nil, update_opts)
       end
       
       bikes.each do |bike|
         
         reply = build_bike_reply(at_screen_name, bike)
-        result = @rest_client.update(reply, update_opts)
-        puts "Sent \"#{result.full_text}\"" # if $DEBUG
-
+        # result = @rest_client.update(reply, updat# e_opts)
+        # puts "Sent \"#{result.full_text}\"" # if $DEBUG
+        send_tweet(reply, bike["photo"], update_opts)
       end
       # 3. There are more than 3 bikes, just send to the search results
     else 
       reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
-      result = @rest_client.update(reply, update_opts)
-      puts "Sent \"#{result.full_text}\"" # if $DEBUG
+      #result = @rest_client.update(reply, update_opts)
+      #puts "Sent \"#{result.full_text}\"" # if $DEBUG
+      send_tweet(reply, nil, update_opts)
       
     end
   end
