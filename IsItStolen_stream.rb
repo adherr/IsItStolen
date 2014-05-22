@@ -135,15 +135,39 @@ class IsItStolen
 #      send_tweet(message, nil, options)
   end
 
-  # Monitors userstream (streaming API) and catches tweets
-  # Most of the time we are sitting in the block in this function waiting for tweets
-  def respond_to_stream
 
-    @stream_client.userstream do |tweet|
-      process_tweet(tweet)
+  # Takes the full text of the incoming tweet and attempts to isolate
+  # the serial number
+  #
+  # @param tweet [Twitter::Tweet] incoming tweet
+  # @return [String] string to search the BikeIndex for
+  def create_search_term(tweet)
+    search_term = tweet.full_text
+
+    # remove user mentions from the incoming tweet using the indices included in the Entity
+    tweet.user_mentions.each do |user_mention|
+      search_term = (user_mention.indices[0] > 0 ? search_term.slice(0..(user_mention.indices[0]-1)) : "") + search_term.slice(user_mention.indices[1]..-1)
     end
 
+    # and what the hell, get hashtags too
+    tweet.hashtags.each do |hashtag|
+      search_term = (hashtag.indices[0] > 0 ? search_term.slice(0..(hashtag.indices[0]-1)) : "") + search_term.slice(hashtag.indices[1]..-1)
+    end
+
+    # remove whitespace from the ends for matching with returned serial later on
+    search_term.strip!
   end
+
+  # @param search_term [String] What to search the BikeIndex for
+  # @param close_serials [Boolean] whether to search close serials or exact serials (default)
+  # @return [Array] of bike hashes as defined bike the BikeIndex API https://bikeindex.org/documentation/api_v1
+  def search_bike_index(search_term, close_serials = nil)
+    url = close_serials ? 'https://bikeindex.org/api/v1/bikes/close_serials' : 'https://bikeindex.org/api/v1/bikes'
+    bike_index_response = Faraday.get url, { :serial => search_term }
+
+    JSON.parse(bike_index_response.body)["bikes"]
+  end
+
 
   # Takes a tweet, picks it apart, queries BikeIndex, and replies to tweet
   #
@@ -158,26 +182,12 @@ class IsItStolen
       return
     end
 
-    
-    search_term = tweet.full_text
-
-    # remove user mentions from the incoming tweet
-    tweet.user_mentions.each do |user_mention|
-      search_term = (user_mention.indices[0] > 0 ? search_term.slice(0..(user_mention.indices[0]-1)) : "") + search_term.slice(user_mention.indices[1]..-1)
-    end
-    # and what the hell, get hashtags too
-    tweet.hashtags.each do |hashtag|
-      search_term = (hashtag.indices[0] > 0 ? search_term.slice(0..(hashtag.indices[0]-1)) : "") + search_term.slice(hashtag.indices[1]..-1)
-    end
-    # remove whitespace from the ends for matching with returned serial later on
-    search_term.strip!
-
+    search_term = create_search_term(tweet)
     puts "searching for \"#{search_term}\"" # if $DEBUG
 
     # stuff to use in the twitter status reply
     update_opts = { :in_reply_to_status => tweet}
     at_screen_name = "@#{tweet.user.screen_name}" #This is 16 characters max ('@' + 15 for screen name)
-
 
     # Don't bother to search if the serial number is "absent"
     if search_term.downcase == "absent"
@@ -186,60 +196,64 @@ class IsItStolen
       return
     end
 
-    # go search the bike index
-    bike_index_response = Faraday.get 'https://bikeindex.org/api/v1/bikes', { :serial => search_term }
-    # make bikes an array of bike hashes from the bike index
-    bikes = JSON.parse(bike_index_response.body)["bikes"]
-
+    bikes = search_bike_index(search_term)
     puts "got #{bikes.length} bikes" # if $DEBUG
 
     # There are several cases of outcomes here
+    case bikes.length
     # 1. no bikes found
-    if bikes.empty?
-
+    when 0
+        
       # search for close serials
-      bike_index_response_close = Faraday.get 'https://bikeindex.org/api/v1/bikes/close_serials', { :serial => search_term }
-      # make close_bikes an array of bike hashes from the bike index
-      close_bikes = JSON.parse(bike_index_response_close.body)["bikes"]
-
+      close_bikes = search_bike_index(search_term, "close")
       puts "Searching close serials: got #{close_bikes.length}" # if $DEBUG
 
+      case close_bikes.length
       # If there's only one match, tweet it, else send to search results
-      if close_bikes.empty?
+      when 0
         reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
         send_tweet(reply, nil, update_opts)
 
-      elsif close_bikes.length == 1
+      when 1
         reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
         send_tweet(reply, close_bikes[0]["photo"], update_opts)
-
+        
       else
         reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
       
 
-      # 2. a few bikes found
-    elsif bikes.length >= 1 && bikes.length <= 3
+    # 2. a few bikes found
+    when 1..3
       if bikes.length > 1
         reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
       
       bikes.each do |bike|
-        
         reply = build_bike_reply(at_screen_name, bike)
         send_tweet(reply, bike["photo"], update_opts)
       end
-      # 3. There are more than 3 bikes, just send to the search results
+    
+    # 3. There are more than 3 bikes, just send to the search results
     else 
       reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
       send_tweet(reply, nil, update_opts)
       
     end
   end
+
+  # Monitors userstream (streaming API) and catches tweets
+  # Most of the time we are sitting in the block in this function waiting for tweets
+  def respond_to_stream
+
+    @stream_client.userstream do |tweet|
+      process_tweet(tweet)
+    end
+
+  end
 end
 
 
-bot = IsItStolen.new
-bot.respond_to_stream
+bot = IsItStolen.new.respond_to_stream
