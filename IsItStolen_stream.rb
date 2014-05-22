@@ -3,12 +3,14 @@
 require 'rubygems'
 require 'bundler/setup' 
 
+require 'open-uri'
+
 require 'dotenv'
 require 'tweetstream'
 require 'twitter'
 require 'faraday'
 require 'json'
-require 'open-uri'
+require 'geocoder'
 
 class IsItStolen
 
@@ -67,7 +69,7 @@ class IsItStolen
   # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
   def build_bike_reply(at_screen_name, bike)
     max_char = @tweet_length - @https_length - at_screen_name.length - 3 # spaces between slugs
-    stolen_slug = bike["stolen"] ? "STOLEN" : "NOT stolen"
+    stolen_slug = bike["stolen"] ? "**STOLEN**" : "all's good"
 
     max_char -= stolen_slug.length
     max_char -= bike["photo"] ? @media_length : 0
