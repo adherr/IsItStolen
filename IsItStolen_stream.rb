@@ -54,7 +54,11 @@ class IsItStolen
     # grab the current t.co wrapper length for https links and other quantities
     @https_length = @rest_client.configuration.short_url_length_https
     @media_length = @rest_client.configuration.characters_reserved_per_media
+    # define constants here
     @tweet_length = 140
+    @stolen_str = "**STOLEN**"
+    @not_stolen_str = "all's good"
+    @respond_history_time = 3600 # how far to go back and respond to tweets on restart (in seconds)
 
     # whoami? (remember this so we can not respond to our own messages in the stream)
     @i_am_user = @rest_client.verify_credentials
@@ -69,7 +73,7 @@ class IsItStolen
   # @param bike [Hash] bike hash as delivered by BikeIndex that we're going to tweet about
   def build_bike_reply(at_screen_name, bike)
     max_char = @tweet_length - @https_length - at_screen_name.length - 3 # spaces between slugs
-    stolen_slug = bike["stolen"] ? "**STOLEN**" : "all's good"
+    stolen_slug = bike["stolen"] ? @stolen_str : @not_stolen_str
 
     max_char -= stolen_slug.length
     max_char -= bike["photo"] ? @media_length : 0
@@ -244,9 +248,31 @@ class IsItStolen
     end
   end
 
+  # Respond to tweets we missed when the script was not running
+  # TODO make this run when the streaming API hiccups or any time we reconnect
+  def get_missed_tweets
+    # all my tweets are replys, so we can find the last thing we replied to by looking at my last tweet
+    user_timeline_opts = { :count => 1}
+    last_tweet = @rest_client.user_timeline(@i_am_user, user_timeline_opts)[0]
+    # if there are more than 200 tweets at me since my last reply, we're going to miss some
+    mentions_timeline_opts = { :count => 200, :since_id => last_tweet.in_reply_to_status_id }
+    missed_tweets = @rest_client.mentions_timeline(mentions_timeline_opts)
+    puts "Missed #{missed_tweets.length} tweets. Responding..."
+
+    missed_tweets.reverse_each do |tweet|
+      if (Time.now - tweet.created_at) <= @respond_history_time
+        process_tweet(tweet)
+      else
+        puts "This one's too old. Next!"
+      end
+    end
+  end
+
   # Monitors userstream (streaming API) and catches tweets
   # Most of the time we are sitting in the block in this function waiting for tweets
   def respond_to_stream
+    # first, get the missed ones
+    get_missed_tweets
 
     @stream_client.userstream do |tweet|
       process_tweet(tweet)
