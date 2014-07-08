@@ -1,4 +1,4 @@
-ruby '2.0.0'
+ruby '2.1.2'
 
 source "https://rubygems.org"
 
@@ -10,4 +10,4 @@ gem 'json'
 gem 'geocoder'
 
 # need latest eventmachine on windows
-gem 'eventmachine', :git => 'https://github.com/eventmachine/eventmachine.git'
+#gem 'eventmachine', :git => 'https://github.com/eventmachine/eventmachine.git'

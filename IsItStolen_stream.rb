@@ -1,7 +1,7 @@
 #!/usr/bin/ruby
 
 require 'rubygems'
-require 'bundler/setup' 
+require 'bundler/setup'
 
 require 'open-uri'
 
@@ -65,7 +65,7 @@ class IsItStolen
     puts "I am #{@i_am_user.screen_name}" # if $DEBUG
 
   end
-  
+
   # Perform the conditional text processing to create a reply string
   # that fits twitter's limits
   #
@@ -114,7 +114,7 @@ class IsItStolen
   #
   # @param message [String] the text to send
   # @param media_location [String] URI of photo to send
-  # @param options [Hash] same options as 
+  # @param options [Hash] same options as
   def send_tweet(message, media_location, options={})
     result = nil
 
@@ -185,6 +185,11 @@ class IsItStolen
       puts "my tweet... next!" # if $DEBUG
       return
     end
+    # don't respond to retweets that mention me
+    if tweet.retweet?
+      puts "it's a retweet...skipping"
+      return
+    end
 
     search_term = create_search_term(tweet)
     puts "searching for \"#{search_term}\"" # if $DEBUG
@@ -207,7 +212,7 @@ class IsItStolen
     case bikes.length
     # 1. no bikes found
     when 0
-        
+
       # search for close serials
       close_bikes = search_bike_index(search_term, "close")
       puts "Searching close serials: got #{close_bikes.length}" # if $DEBUG
@@ -221,12 +226,12 @@ class IsItStolen
       when 1
         reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
         send_tweet(reply, close_bikes[0]["photo"], update_opts)
-        
+
       else
         reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
-      
+
 
     # 2. a few bikes found
     when 1..3
@@ -234,17 +239,17 @@ class IsItStolen
         reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
-      
+
       bikes.each do |bike|
         reply = build_bike_reply(at_screen_name, bike)
         send_tweet(reply, bike["photo"], update_opts)
       end
-    
+
     # 3. There are more than 3 bikes, just send to the search results
-    else 
+    else
       reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
       send_tweet(reply, nil, update_opts)
-      
+
     end
   end
 
