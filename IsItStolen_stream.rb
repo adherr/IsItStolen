@@ -220,7 +220,7 @@ class IsItStolen
       case close_bikes.length
       # If there's only one match, tweet it, else send to search results
       when 0
-        reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index https://BikeIndex.org"
+        reply = "#{at_screen_name} Sorry, I couldn't find that bike on the Bike Index https://BikeIndex.org"
         send_tweet(reply, nil, update_opts)
 
       when 1
@@ -228,7 +228,7 @@ class IsItStolen
         send_tweet(reply, close_bikes[0]["photo"], update_opts)
 
       else
-        reply = "Sorry #{at_screen_name}, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
+        reply = "#{at_screen_name} Sorry, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
 
@@ -247,7 +247,7 @@ class IsItStolen
 
     # 3. There are more than 3 bikes, just send to the search results
     else
-      reply = "Whoa, #{at_screen_name} there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
+      reply = "#{at_screen_name} Whoa, there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
       send_tweet(reply, nil, update_opts)
 
     end
