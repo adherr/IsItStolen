@@ -5,4 +5,4 @@
 .DS_Store
 
 # rvm ruby versioning
-.ruby-version
+.ruby-*

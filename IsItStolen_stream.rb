@@ -19,7 +19,7 @@ class IsItStolen
   # BEWARE!: These methods could fail (and I should probably put them in a setup function after object creation)
   def initialize
     Dotenv.load
-
+    @search_url = "https://BikeIndex.org/bikes?stolen=true&non_proximity=true"
     # set up the clients
     TweetStream.configure do |config|
       config.consumer_key    = ENV['CONSUMER_KEY']
@@ -76,7 +76,7 @@ class IsItStolen
     stolen_slug = bike["stolen"] ? @stolen_str : @not_stolen_str
 
     max_char -= stolen_slug.length
-    max_char -= bike["photo"] ? @media_length : 0
+    max_char -= bike["large_img"] ? @media_length : 0
 
     color = bike["frame_colors"][0]
     if color.start_with?("Silver")
@@ -166,7 +166,7 @@ class IsItStolen
   # @param close_serials [Boolean] whether to search close serials or exact serials (default)
   # @return [Array] of bike hashes as defined bike the BikeIndex API https://bikeindex.org/documentation/api_v1
   def search_bike_index(search_term, close_serials = nil)
-    url = close_serials ? 'https://bikeindex.org/api/v1/bikes/close_serials' : 'https://bikeindex.org/api/v1/bikes'
+    url = close_serials ? 'https://bikeindex.org/api/v2/bikes_search/close_serials' : 'https://bikeindex.org/api/v2/bikes_search'
     bike_index_response = Faraday.get url, { :serial => search_term }
 
     JSON.parse(bike_index_response.body)["bikes"]
@@ -200,7 +200,7 @@ class IsItStolen
 
     # Don't bother to search if the serial number is "absent"
     if search_term.downcase == "absent"
-      reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: https://BikeIndex.org/bikes?serial=ABSENT"
+      reply = "#{at_screen_name} There are way too many bikes without serial numbers for me to tweet. Search here: #{@search_url}&serial=ABSENT"
       send_tweet(reply, nil, update_opts)
       return
     end
@@ -225,10 +225,10 @@ class IsItStolen
 
       when 1
         reply = build_bike_reply("#{at_screen_name} Inexact match: serial=#{close_bikes[0]["serial"]}", close_bikes[0])
-        send_tweet(reply, close_bikes[0]["photo"], update_opts)
+        send_tweet(reply, close_bikes[0]["large_img"], update_opts)
 
       else
-        reply = "#{at_screen_name} Sorry, I couldn't find that bike on the Bike Index, but here are some similar serials https://BikeIndex.org/bikes?serial=#{search_term}"
+        reply = "#{at_screen_name} Sorry, I couldn't find that bike on the Bike Index, but here are some similar serials #{@search_url}&serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
 
@@ -236,18 +236,18 @@ class IsItStolen
     # 2. a few bikes found
     when 1..3
       if bikes.length > 1
-        reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. https://BikeIndex.org/bikes?serial=#{search_term}"
+        reply = "#{at_screen_name} There are #{bikes.length} bikes with that serial number. I'll tweet them to you. #{@search_url}&serial=#{search_term}"
         send_tweet(reply, nil, update_opts)
       end
 
       bikes.each do |bike|
         reply = build_bike_reply(at_screen_name, bike)
-        send_tweet(reply, bike["photo"], update_opts)
+        send_tweet(reply, bike["large_img"], update_opts)
       end
 
     # 3. There are more than 3 bikes, just send to the search results
     else
-      reply = "#{at_screen_name} Whoa, there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: https://BikeIndex.org/bikes?serial=#{search_term}"
+      reply = "#{at_screen_name} Whoa, there are #{bikes.length} bikes with that serial! Too many to tweet. Check here: #{@search_url}&serial=#{search_term}"
       send_tweet(reply, nil, update_opts)
 
     end
