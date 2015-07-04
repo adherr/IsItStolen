@@ -257,8 +257,10 @@ class IsItStolen
   # TODO make this run when the streaming API hiccups or any time we reconnect
   def get_missed_tweets
     # all my tweets are replys, so we can find the last thing we replied to by looking at my last tweet
-    user_timeline_opts = { :count => 1}
+    user_timeline_opts = { :count => 1 }
     last_tweet = @rest_client.user_timeline(@i_am_user, user_timeline_opts)[0]
+    # Unless it's a serial search tweet, skip this - in case we tweet something from @IsItStolen
+    return true unless last_tweet && last_tweet.in_reply_to_status_id != nil
     # if there are more than 200 tweets at me since my last reply, we're going to miss some
     mentions_timeline_opts = { :count => 200, :since_id => last_tweet.in_reply_to_status_id }
     missed_tweets = @rest_client.mentions_timeline(mentions_timeline_opts)
