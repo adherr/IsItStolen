@@ -4,6 +4,7 @@ require 'rubygems'
 require 'bundler/setup'
 
 require 'open-uri'
+require 'openssl'
 
 require 'dotenv'
 require 'tweetstream'
@@ -163,7 +164,7 @@ class IsItStolen
     puts "Sent \"#{result.full_text}\"" # if $DEBUG
 
     rescue Twitter::Error => e
-      puts "recieved #{e.message}, no reply sent"
+      puts "received #{e.message}, no reply sent"
     # here we assume that non-Twitter errors are file errors
 # we can't really be sure of this, and we don't want to end up sending doubles, so no
 #    rescue
@@ -199,7 +200,6 @@ class IsItStolen
   def search_bike_index(search_term, close_serials = nil)
     url = close_serials ? 'https://bikeindex.org/api/v2/bikes_search/close_serials' : 'https://bikeindex.org/api/v2/bikes_search'
     bike_index_response = Faraday.get url, { :serial => search_term }
-
     JSON.parse(bike_index_response.body)["bikes"]
   end
 
@@ -314,10 +314,13 @@ class IsItStolen
   def respond_to_stream
     # first, get the missed ones
     get_missed_tweets
-    @stream_client.userstream do |tweet|
-      process_tweet(tweet)
+    begin
+      @stream_client.userstream do |tweet|
+        process_tweet(tweet)
+      end
+    rescue Error => e
+      pp e
     end
-
   end
 end
 
