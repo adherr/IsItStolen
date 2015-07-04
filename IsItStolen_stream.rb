@@ -4,7 +4,6 @@ require 'rubygems'
 require 'bundler/setup'
 
 require 'open-uri'
-require 'openssl'
 
 require 'dotenv'
 require 'tweetstream'
@@ -82,7 +81,7 @@ class IsItStolen
       puts "Reconnected: timeout #{timeout}, retries: #{retries}"
     end
 
-
+    puts "setting up"
     # grab the current t.co wrapper length for https links and other quantities
     @https_length = @rest_client.configuration.short_url_length_https
     @media_length = @rest_client.configuration.characters_reserved_per_media
@@ -318,8 +317,9 @@ class IsItStolen
       @stream_client.userstream do |tweet|
         process_tweet(tweet)
       end
-    rescue Error => e
+    rescue => e
       pp e
+      respond_to_stream
     end
   end
 end
