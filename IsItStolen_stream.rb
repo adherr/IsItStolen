@@ -11,6 +11,37 @@ require 'twitter'
 require 'faraday'
 require 'json'
 require 'geocoder'
+require 'pp'
+
+class NilClass
+  def blank?
+    true
+  end
+end
+
+class String
+  def blank?
+    self.strip.empty?
+  end
+end
+
+class FalseClass
+  def blank?
+    true
+  end
+end
+
+class TrueClass
+  def blank?
+    false
+  end
+end
+
+class Object
+  def blank?
+    respond_to?(:empty?) ? empty? : !self
+  end
+end
 
 class IsItStolen
 
@@ -254,15 +285,18 @@ class IsItStolen
   end
 
   # Respond to tweets we missed when the script was not running
-  # TODO make this run when the streaming API hiccups or any time we reconnect
   def get_missed_tweets
     # all my tweets are replys, so we can find the last thing we replied to by looking at my last tweet
-    user_timeline_opts = { :count => 1 }
-    last_tweet = @rest_client.user_timeline(@i_am_user, user_timeline_opts)[0]
-    # Unless it's a serial search tweet, skip this - in case we tweet something from @IsItStolen
-    return true unless last_tweet && last_tweet.in_reply_to_status_id != nil
+    user_timeline_opts = { :count => 5 }
+    # Keep going back until we find a replying tweet - in case we tweet something from @IsItStolen
+    last_tweet = @rest_client.user_timeline(@i_am_user, user_timeline_opts)[tweet_index = 0]
+    while last_tweet.in_reply_to_status_id.blank?
+      last_tweet = @rest_client.user_timeline(@i_am_user, user_timeline_opts)[tweet_index += 1]
+      sleep 0.5 # Don't get rate limited
+    end
     # if there are more than 200 tweets at me since my last reply, we're going to miss some
     mentions_timeline_opts = { :count => 200, :since_id => last_tweet.in_reply_to_status_id }
+
     missed_tweets = @rest_client.mentions_timeline(mentions_timeline_opts)
     puts "Missed #{missed_tweets.length} tweets. Responding..."
 
@@ -280,7 +314,6 @@ class IsItStolen
   def respond_to_stream
     # first, get the missed ones
     get_missed_tweets
-
     @stream_client.userstream do |tweet|
       process_tweet(tweet)
     end
